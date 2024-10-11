@@ -12,7 +12,7 @@
 </div>
 
 
-## 🏃 Intro InternGeo
+## 🏃 Introduction of GeoX
 
 
 ## 🚩 News
