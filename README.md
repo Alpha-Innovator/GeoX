@@ -1,7 +1,7 @@
 
 
 <div align="center">
-  <h1>InternGeo</h1>
+  <h1>GeoX</h1>
   <p align="center">
     <a href="">💡Project Page</a> •
     <a href="">📃Arxiv Paper</a> •
