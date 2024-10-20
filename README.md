@@ -36,7 +36,7 @@
 
 ## 🚩 News
 
-- [2024/10/17] Upload paper and init project. Release the the data for GeoX. 详情请See [here](https://huggingface.co/U4R/GeoX).
+- [2024/10/17] Upload paper and init project. Release the data for GeoX. See [here](https://huggingface.co/U4R/GeoX).
 
 
 ## ⚡ Set up
