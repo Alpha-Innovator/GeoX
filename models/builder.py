@@ -15,15 +15,6 @@ class VoteGenerator(nn.Module):
         self.n_query = n_query
 
     def forward(self, image_embeds):
-        """
-        Forward pass for generating query embeddings.
-        
-        Args:
-            image_embeds (torch.Tensor): Input image embeddings of shape (batch_size, seq_len, dim).
-        
-        Returns:
-            torch.Tensor: Generated query embeddings of shape (batch_size, n_query, dim).
-        """
         image_embeds = image_embeds.permute(1, 0, 2)
         transformed = self.transformer_encoder(image_embeds)
         transformed = transformed.permute(1, 0, 2)
