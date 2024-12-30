@@ -6,11 +6,10 @@
 </div>
 
 <div align="center">
-    <h2> <a href="https://arxiv.org/abs/2312.10763">GeoX: Geometric Problem Solving Through Unified Formalized Vision-Language Pre-training</a></h2>
+    <h2> <a href="https://arxiv.org/abs/2412.11863">GeoX: Geometric Problem Solving Through Unified Formalized Vision-Language Pre-training</a></h2>
 
   <p align="center">
-    <a href="">💻Project Page</a> •
-    <a href="">📃Arxiv Paper</a> •
+    <a href="https://arxiv.org/abs/2412.11863">📃Arxiv Paper</a> •
     <a href="https://huggingface.co/datasets/U4R/GeoX-data">🎒Data</a> •
     <a href="https://huggingface.co/U4R/GeoX">🤗Checkpoint</a> •
     <a href="#-citation">📖Citation
@@ -44,23 +43,15 @@
 <details>
   <summary><b>Environment Setup</b></summary>
 
-**Step 1. Build Dependencies.** Our code is tested with CUDA 12.2 and Python 3.10.14. To run the codes, you should first install the following packages:
+**Step 1. Build Dependencies.** Our code is tested with Python 3.10.14. To run the codes, you should first install the following packages:
 
 ```{bash}
-
+conda create -n geox python=3.10
+conda activate geox
+pip install --upgrade pip
+pip install -r requirements.txt
+pip install flash-attn==2.5.9.post1 --no-build-isolation
 ```
-
-After that, 
-
-```{bash}
-
-```
-
-```{bash}
-
-```
-
-
 </details>
 
 
@@ -72,8 +63,6 @@ After that,
 **Step 1. Download and Prepare Data.**
 
 
-
-
 1. Follow the instructions [here](https://huggingface.co/datasets/U4R/GeoX-data) and download full dataset for GeoX. 
 2. To train the model, you are required to organize the files into the following folders:
 
@@ -83,7 +72,6 @@ After that,
   alignment/
     images/
     unified_formal_annotations.json
-
 
   geoqa/
     images/
@@ -108,13 +96,13 @@ After that,
 
 
 
-
-
 </details>
 
 
 
 ## 💻 Train your own model
+
+
 
 <details>
   <summary><b>Training</b></summary>
