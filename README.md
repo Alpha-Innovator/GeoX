@@ -196,7 +196,15 @@ deepspeed \
 If you find our work helps, please consider starring ⭐ us and citing:
 
 ```{bibtex}
-
+@misc{xia2024geoxgeometricproblemsolving,
+      title={GeoX: Geometric Problem Solving Through Unified Formalized Vision-Language Pre-training}, 
+      author={Renqiu Xia and Mingsheng Li and Hancheng Ye and Wenjie Wu and Hongbin Zhou and Jiakang Yuan and Tianshuo Peng and Xinyu Cai and Xiangchao Yan and Bin Wang and Conghui He and Botian Shi and Tao Chen and Junchi Yan and Bo Zhang},
+      year={2024},
+      eprint={2412.11863},
+      archivePrefix={arXiv},
+      primaryClass={cs.CV},
+      url={https://arxiv.org/abs/2412.11863}, 
+}
 ```
 
 
