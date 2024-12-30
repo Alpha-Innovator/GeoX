@@ -107,24 +107,19 @@ pip install flash-attn==2.5.9.post1 --no-build-isolation
   <summary><b> Finetune on Geometry Data</b></summary>
     
 ```{bash}
-
-# Define base directories and output model directory
 MODEL_DIR="/path/to/your/model/directory"  # Modify this path as necessary
 Text_FILE="/path/to/your/training/data"  # Modify this path as necessary
 IMAGE_FOLDER="/path/to/your/image/folder"  # Modify this path as necessary
 OUTPUT_DIR="/path/to/your/output/directory"  # Modify this path as necessary
 LOG_FILE="${OUTPUT_DIR}/train.log"
+GPU_DEVICES=""
 
-# Create output directory if it does not exist
 if [ ! -d "${OUTPUT_DIR}" ]; then  
     mkdir -p "${OUTPUT_DIR}"
 fi
-
-# Set environment variables
 export MASTER_PORT=20728
 
-# Run the training script
-deepspeed --include=localhost:0,1,2,3 --master_port=$MASTER_PORT main/train_geox.py \
+deepspeed --include=localhost:${GPU_DEVICES} --master_port=$MASTER_PORT main/train_geox.py \
     --deepspeed ./configs/models/zero2.json \
     --model_name_or_path "${MODEL_DIR}" \
     --version geo_v1 \
