@@ -102,15 +102,35 @@ pip install flash-attn==2.5.9.post1 --no-build-isolation
 
 ## 💻 Train your own model
 
+### (Optional) Uni-modal Pretraining
+```{bash}
 
+# Define the base directory and output directory
+BASE_DIR="/path/to/your/base/directory"  # Modify this path as necessary
+OUTPUT_DIR="/path/to/your/output/directory"  # Modify this path as necessary
+
+# Run the Python script with the specified configurations
+python ${BASE_DIR}/pretrain/pretrain_encoder.py \
+    --job_dir ${OUTPUT_DIR}/checkpoint/mae \
+    --nodes 1 \
+    --ngpus 8 \
+    --accum_iter 16 \
+    --batch_size 256 \
+    --use_volta32 \
+    --model mae_vit_base_patch16 \
+    --mask_ratio 0.75 \
+    --epochs 800 \
+    --warmup_epochs 40 \
+    --blr 1.5e-4 \
+    --weight_decay 0.05 \
+    --data_path ${BASE_DIR}/data  # Ensure the data path is correctly parameterized
+```
 
 <details>
   <summary><b>Training</b></summary>
 </details>
 
-<details>
-  <summary><b>Evaluation</b></summary>
-</details>
+
 
 
 ## 📖 Citation
