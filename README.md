@@ -102,7 +102,8 @@ pip install flash-attn==2.5.9.post1 --no-build-isolation
 
 ## 💻 Train your own model
 
-### (Optional) Uni-modal Pretraining
+<details>
+  <summary><b> (Optional) Uni-modal Pretraining</b></summary>
 ```{bash}
 
 # Define the base directory and output directory
@@ -185,8 +186,6 @@ deepspeed \
     | tee -a "${LOG_FILE}"
 ```
 
-<details>
-  <summary><b>Training</b></summary>
 </details>
 
 
