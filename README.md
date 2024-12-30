@@ -104,6 +104,7 @@ pip install flash-attn==2.5.9.post1 --no-build-isolation
 
 <details>
   <summary><b> (Optional) Uni-modal Pretraining</b></summary>
+    
 ```{bash}
 
 # Define the base directory and output directory
@@ -185,7 +186,6 @@ deepspeed \
     --ddp_timeout 18000000 \
     | tee -a "${LOG_FILE}"
 ```
-
 </details>
 
 
