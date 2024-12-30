@@ -104,38 +104,15 @@ pip install flash-attn==2.5.9.post1 --no-build-isolation
 ## 💻 Train your own model
 
 <details>
-  <summary><b> (Optional) Uni-modal Pretraining</b></summary>
+  <summary><b> Finetune on Geometry Data</b></summary>
     
 ```{bash}
 
-# Define the base directory and output directory
-BASE_DIR="/path/to/your/base/directory"  # Modify this path as necessary
+# Define base directories and output model directory
+MODEL_DIR="/path/to/your/model/directory"  # Modify this path as necessary
+Text_FILE="/path/to/your/training/data"  # Modify this path as necessary
+IMAGE_FOLDER="/path/to/your/image/folder"  # Modify this path as necessary
 OUTPUT_DIR="/path/to/your/output/directory"  # Modify this path as necessary
-
-# Run the Python script with the specified configurations
-python ${BASE_DIR}/pretrain/pretrain_encoder.py \
-    --job_dir ${OUTPUT_DIR}/checkpoint/mae \
-    --nodes 1 \
-    --ngpus 8 \
-    --accum_iter 16 \
-    --batch_size 256 \
-    --use_volta32 \
-    --model mae_vit_base_patch16 \
-    --mask_ratio 0.75 \
-    --epochs 800 \
-    --warmup_epochs 40 \
-    --blr 1.5e-4 \
-    --weight_decay 0.05 \
-    --data_path ${BASE_DIR}/data  # Ensure the data path is correctly parameterized
-```
-
-
-```{bash}
-
-# Define base directory and output model directory
-DATA_FILE="/path/to/your/training/data"  # Modify this path as necessary
-OUTPUT_DIR="/path/to/your/output/directory"  # Modify this path as necessary
-MODEL_DIR="/path/to/LLEMMA/directory"  # Modify this path as necessary
 LOG_FILE="${OUTPUT_DIR}/train.log"
 
 # Create output directory if it does not exist
@@ -143,49 +120,42 @@ if [ ! -d "${OUTPUT_DIR}" ]; then
     mkdir -p "${OUTPUT_DIR}"
 fi
 
-# Optional: Set environment variable for NCCL
-# export NCCL_P2P_DISABLE=1  # Uncomment this if necessary
+# Set environment variables
+export MASTER_PORT=20728
 
-deepspeed \
-    --include localhost:0,1,2,3,4,5,6,7 \
-    main/train_llm.py \
-    --config_name "${MODEL_DIR}/config.json" \
-    --tokenizer_name "${MODEL_DIR}" \
+# Run the training script
+deepspeed --include=localhost:0,1,2,3 --master_port=$MASTER_PORT main/train_geox.py \
+    --deepspeed ./configs/models/zero2.json \
     --model_name_or_path "${MODEL_DIR}" \
-    --train_files "${DATA_FILE}" \
-    --per_device_train_batch_size 64 \
-    --per_device_eval_batch_size 32 \
-    --do_train \
+    --version geo_v1 \
+    --data_path "${Text_FILE}" \
+    --image_folder "${IMAGE_FOLDER}" \
+    --vision_tower "${MODEL_DIR}/geo-vit.pth" \
+    --gsformer_path "${MODEL_DIR}/gsformer.pth" \
+    --mm_use_im_start_end False \
+    --mm_use_im_patch_token False \
+    --bf16 True \
     --output_dir "${OUTPUT_DIR}" \
-    --evaluation_strategy steps \
-    --use_fast_tokenizer false \
-    --max_eval_samples 0 \
-    --learning_rate 1e-6 \
-    --gradient_accumulation_steps 4 \
-    --num_train_epochs 10 \
-    --warmup_ratio 0.1 \
-    --logging_dir "${OUTPUT_DIR}/logs" \
-    --logging_strategy steps \
-    --logging_steps 50 \
-    --save_strategy steps \
-    --preprocessing_num_workers 10 \
-    --save_steps 20000000 \
-    --eval_steps 500000000 \
-    --save_total_limit 2000 \
-    --seed 42 \
-    --disable_tqdm false \
-    --ddp_find_unused_parameters false \
-    --block_size 1024 \
-    --overwrite_output_dir \
-    --report_to tensorboard \
-    --run_name llm_pretrain \
-    --bf16 \
-    --bf16_full_eval \
-    --gradient_checkpointing \
-    --deepspeed configs/models/zero3.json \
-    --ignore_data_skip true \
-    --ddp_timeout 18000000 \
+    --num_train_epochs 100 \
+    --per_device_train_batch_size 64 \
+    --per_device_eval_batch_size 4 \
+    --gradient_accumulation_steps 1 \
+    --evaluation_strategy "no" \
+    --save_strategy "steps" \
+    --save_steps 1000 \
+    --save_total_limit 100 \
+    --learning_rate 3e-5 \
+    --weight_decay 0. \
+    --warmup_ratio 0.05 \
+    --lr_scheduler_type "cosine" \
+    --logging_steps 1 \
+    --tf32 True \
+    --model_max_length 2048 \
+    --gradient_checkpointing True \
+    --dataloader_num_workers 0 \
+    --lazy_preprocess True \
     | tee -a "${LOG_FILE}"
+
 ```
 </details>
 
