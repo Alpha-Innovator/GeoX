@@ -12,18 +12,19 @@ import torch
 from torch.utils.data import Dataset
 
 import transformers
+from transformers import set_seed
 import tokenizers
 
-
-
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+
 from configs.models.constants import IGNORE_INDEX, IMAGE_TOKEN_INDEX, DEFAULT_IMAGE_TOKEN, DEFAULT_IM_START_TOKEN, DEFAULT_IM_END_TOKEN
+from configs.geox_opts import ModelArguments, DataArguments, TrainingArguments
+import configs.conversation as conversation_lib
+from models.geox import GeoXLlamaForCausalLM, GeoXTrainer
 
-
-import models.geox.conversation as conversation_lib
-from models import *
-from models.geox.mm_utils import tokenizer_image_token
-
+from utils.mm_utils import tokenizer_image_token
+from utils.param import detach_and_clone_param, get_parameters_by_keys
 from PIL import Image
 
 
@@ -32,117 +33,12 @@ IS_TOKENIZER_GREATER_THAN_0_14 = version.parse(tokenizers.__version__) >= versio
 
 
 
-# Set the seed for Python's random number generator
-def setup_seeds():
-    seed = 42
-    random.seed(seed)
-
-    # Set the seed for NumPy's random number generator
-    np.random.seed(seed)
-
-    # Set the seed for PyTorch's random number generator
-    torch.manual_seed(seed)
-
-    # If you're using GPU, you can also set the seed for CUDA devices
-    torch.cuda.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
-
-    # Additional steps to ensure reproducibility when using CUDA
-    torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = False
-
 local_rank = None
 
 def rank0_print(*args):
     if local_rank == 0:
         print(*args)
 
-
-@dataclass
-class ModelArguments:
-    model_name_or_path: Optional[str] = field(default="facebook/opt-125m")
-    version: Optional[str] = field(default="v0")
-    freeze_backbone: bool = field(default=False)
-    tune_mm_mlp_adapter: bool = field(default=False)
-    vision_tower: Optional[str] = field(default=None)
-    mm_vision_select_layer: Optional[int] = field(default=-1)   # default to the last layer
-    pretrain_mm_mlp_adapter: Optional[str] = field(default=None)
-    mm_projector_type: Optional[str] = field(default='linear')
-    mm_use_im_start_end: bool = field(default=False)
-    mm_use_im_patch_token: bool = field(default=True)
-    mm_use_sep_token: bool = field(default=False)
-    mm_patch_merge_type: Optional[str] = field(default='flat')
-    mm_vision_select_feature: Optional[str] = field(default="patch")
-    qformer_freeze: bool = field(default=False)
-    qformer_path: Optional[str] = field(default=None)
-    processor_path: Optional[str] = field(default=None)
-    improve: Optional[str] = field(default=None)
-    
-
-@dataclass
-class DataArguments:
-    data_path: str = field(default=None,
-                           metadata={"help": "Path to the training data."})
-    lazy_preprocess: bool = False
-    is_multimodal: bool = False
-    image_folder: Optional[str] = field(default=None)
-    image_aspect_ratio: str = 'square'
-
-
-@dataclass
-class TrainingArguments(transformers.TrainingArguments):
-    cache_dir: Optional[str] = field(default=None)
-    optim: str = field(default="adamw_torch")
-    remove_unused_columns: bool = field(default=False)
-    freeze_mm_mlp_adapter: bool = field(default=False)
-    mpt_attn_impl: Optional[str] = field(default="triton")
-    model_max_length: int = field(
-        default=512,
-        metadata={
-            "help":
-            "Maximum sequence length. Sequences will be right padded (and possibly truncated)."
-        },
-    )
-    double_quant: bool = field(
-        default=True,
-        metadata={"help": "Compress the quantization statistics through double quantization."}
-    )
-    quant_type: str = field(
-        default="nf4",
-        metadata={"help": "Quantization data type to use. Should be one of `fp4` or `nf4`."}
-    )
-    bits: int = field(
-        default=16,
-        metadata={"help": "How many bits to use."}
-    )
-    lora_enable: bool = False
-    lora_r: int = 64
-    lora_alpha: int = 16
-    lora_dropout: float = 0.05
-    lora_weight_path: str = ""
-    lora_bias: str = "none"
-    mm_projector_lr: Optional[float] = None
-    group_by_modality_length: bool = field(default=False)
-
-
-def maybe_zero_3(param, ignore_status=False, name=None):
-    from deepspeed import zero
-    from deepspeed.runtime.zero.partition_parameters import ZeroParamStatus
-    if hasattr(param, "ds_id"):
-        if param.ds_status == ZeroParamStatus.NOT_AVAILABLE:
-            if not ignore_status:
-                logging.warning(f"{name}: param.ds_status != ZeroParamStatus.NOT_AVAILABLE: {param.ds_status}")
-        with zero.GatheredParameters([param]):
-            param = param.data.detach().cpu().clone()
-    else:
-        param = param.detach().cpu().clone()
-    return param
-
-
-def get_mm_adapter_state_maybe_zero_3(named_params, keys_to_match):
-    to_return = {k: t for k, t in named_params if any(key_match in k for key_match in keys_to_match)}
-    to_return = {k: maybe_zero_3(v, ignore_status=True).cpu() for k, v in to_return.items()}
-    return to_return
 
 def safe_save_model_for_hf_trainer(trainer: transformers.Trainer,
                                    output_dir: str):
@@ -154,7 +50,7 @@ def safe_save_model_for_hf_trainer(trainer: transformers.Trainer,
         if getattr(trainer.args, "use_im_start_end", False):
             keys_to_match.extend(['embed_tokens', 'embed_in'])
 
-        weight_to_save = get_mm_adapter_state_maybe_zero_3(trainer.model.named_parameters(), keys_to_match)
+        weight_to_save = get_parameters_by_keys(trainer.model.named_parameters(), keys_to_match)
         trainer.model.config.save_pretrained(output_dir)
 
         current_folder = output_dir.split('/')[-1]
@@ -722,29 +618,13 @@ def train(attn_implementation=None):
     local_rank = training_args.local_rank
     compute_dtype = (torch.float16 if training_args.fp16 else (torch.bfloat16 if training_args.bf16 else torch.float32))
 
-    # bnb_model_from_pretrained_args = {}
-    # if training_args.bits in [4, 8]:
-    #     from transformers import BitsAndBytesConfig
-    #     bnb_model_from_pretrained_args.update(dict(
-    #         device_map={"": training_args.device},
-    #         load_in_4bit=training_args.bits == 4,
-    #         load_in_8bit=training_args.bits == 8,
-    #         quantization_config=BitsAndBytesConfig(
-    #             load_in_4bit=training_args.bits == 4,
-    #             load_in_8bit=training_args.bits == 8,
-    #             llm_int8_skip_modules=["mm_projector"],
-    #             llm_int8_threshold=6.0,
-    #             llm_int8_has_fp16_weight=False,
-    #             bnb_4bit_compute_dtype=compute_dtype,
-    #             bnb_4bit_use_double_quant=training_args.double_quant,
-    #             bnb_4bit_quant_type=training_args.quant_type # {'fp4', 'nf4'}
-    #         )
-    #     ))
+    set_seed(training_args.seed)
+
 
     if model_args.vision_tower is not None:
         model = GeoXLlamaForCausalLM.from_pretrained(
             model_args.model_name_or_path,
-            cache_dir=training_args.cache_dir,
+            cache_dir=model_args.cache_dir,
             attn_implementation=attn_implementation,
             torch_dtype=(torch.bfloat16 if training_args.bf16 else None),
             # **bnb_model_from_pretrained_args
@@ -769,7 +649,7 @@ def train(attn_implementation=None):
 
     tokenizer = transformers.AutoTokenizer.from_pretrained(
         model_args.model_name_or_path,
-        cache_dir=training_args.cache_dir,
+        cache_dir=model_args.cache_dir,
         model_max_length=training_args.model_max_length,
         padding_side="right",
         use_fast=False,
@@ -815,8 +695,6 @@ def train(attn_implementation=None):
         model.config.mm_use_im_patch_token = model_args.mm_use_im_patch_token
         model.config.mm_use_sep_token = model_args.mm_use_sep_token
         model.initialize_vision_tokenizer(model_args, tokenizer=tokenizer)
-        model.config.improve = model_args.improve
-
 
 
     data_module = make_supervised_data_module(tokenizer=tokenizer,
@@ -842,7 +720,7 @@ def train(attn_implementation=None):
 
 
 if __name__ == "__main__":
-    setup_seeds()
+    
     train()
 
 

@@ -5,8 +5,8 @@ from typing import Iterable
 
 import torch
 
-import util.misc as misc
-import util.lr_sched as lr_sched
+import utils.misc as misc
+import utils.lr_sched as lr_sched
 import time
 import datetime
 

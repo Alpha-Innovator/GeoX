@@ -9,6 +9,37 @@ from transformers import StoppingCriteria
 from configs.models.constants import IMAGE_TOKEN_INDEX
 
 
+
+def unpad_image(tensor, original_size):
+    """
+    Unpads a PyTorch tensor of a padded and resized image.
+
+    Args:
+    tensor (torch.Tensor): The image tensor, assumed to be in CxHxW format.
+    original_size (tuple): The original size of PIL image (width, height).
+
+    Returns:
+    torch.Tensor: The unpadded image tensor.
+    """
+    original_width, original_height = original_size
+    current_height, current_width = tensor.shape[1:]
+
+    original_aspect_ratio = original_width / original_height
+    current_aspect_ratio = current_width / current_height
+
+    if original_aspect_ratio > current_aspect_ratio:
+        scale_factor = current_width / original_width
+        new_height = int(original_height * scale_factor)
+        padding = (current_height - new_height) // 2
+        unpadded_tensor = tensor[:, padding:current_height - padding, :]
+    else:
+        scale_factor = current_height / original_height
+        new_width = int(original_width * scale_factor)
+        padding = (current_width - new_width) // 2
+        unpadded_tensor = tensor[:, :, padding:current_width - padding]
+
+    return unpadded_tensor
+
 def select_best_resolution(original_size, possible_resolutions):
     """
     Selects the best resolution from a list of possible resolutions based on the original size.
