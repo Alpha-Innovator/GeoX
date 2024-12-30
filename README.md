@@ -109,11 +109,10 @@ pip install flash-attn==2.5.9.post1 --no-build-isolation
     
 ```{bash}
 
-# Define the base directory and output directory
+# Pretrain Geo-VIT
 BASE_DIR="/path/to/your/base/directory"  # Modify this path as necessary
 OUTPUT_DIR="/path/to/your/output/directory"  # Modify this path as necessary
 
-# Run the Python script with the specified configurations
 python ${BASE_DIR}/pretrain/pretrain_encoder.py \
     --job_dir ${OUTPUT_DIR}/checkpoint/mae \
     --nodes 1 \
@@ -133,19 +132,16 @@ python ${BASE_DIR}/pretrain/pretrain_encoder.py \
 
 ```{bash}
 
-# Define base directory and output model directory
+# Pretrain Geo-LLM
 DATA_FILE="/path/to/your/training/data"  # Modify this path as necessary
 OUTPUT_DIR="/path/to/your/output/directory"  # Modify this path as necessary
 MODEL_DIR="/path/to/LLEMMA/directory"  # Modify this path as necessary
 LOG_FILE="${OUTPUT_DIR}/train.log"
 
-# Create output directory if it does not exist
 if [ ! -d "${OUTPUT_DIR}" ]; then  
     mkdir -p "${OUTPUT_DIR}"
 fi
 
-# Optional: Set environment variable for NCCL
-# export NCCL_P2P_DISABLE=1  # Uncomment this if necessary
 GPU_DEVICES=""
 
 deepspeed --include=localhost:${GPU_DEVICES} \
