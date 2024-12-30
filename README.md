@@ -103,6 +103,93 @@ pip install flash-attn==2.5.9.post1 --no-build-isolation
 
 ## 💻 Train your own model
 
+
+<details>
+  <summary><b> (Optional) Pretraining</b></summary>
+    
+```{bash}
+
+# Define the base directory and output directory
+BASE_DIR="/path/to/your/base/directory"  # Modify this path as necessary
+OUTPUT_DIR="/path/to/your/output/directory"  # Modify this path as necessary
+
+# Run the Python script with the specified configurations
+python ${BASE_DIR}/pretrain/pretrain_encoder.py \
+    --job_dir ${OUTPUT_DIR}/checkpoint/mae \
+    --nodes 1 \
+    --ngpus 8 \
+    --accum_iter 16 \
+    --batch_size 256 \
+    --use_volta32 \
+    --model mae_vit_base_patch16 \
+    --mask_ratio 0.75 \
+    --epochs 800 \
+    --warmup_epochs 40 \
+    --blr 1.5e-4 \
+    --weight_decay 0.05 \
+    --data_path ${BASE_DIR}/data  # Ensure the data path is correctly parameterized
+```
+
+
+```{bash}
+
+# Define base directory and output model directory
+DATA_FILE="/path/to/your/training/data"  # Modify this path as necessary
+OUTPUT_DIR="/path/to/your/output/directory"  # Modify this path as necessary
+MODEL_DIR="/path/to/LLEMMA/directory"  # Modify this path as necessary
+LOG_FILE="${OUTPUT_DIR}/train.log"
+
+# Create output directory if it does not exist
+if [ ! -d "${OUTPUT_DIR}" ]; then  
+    mkdir -p "${OUTPUT_DIR}"
+fi
+
+# Optional: Set environment variable for NCCL
+# export NCCL_P2P_DISABLE=1  # Uncomment this if necessary
+GPU_DEVICES=""
+
+deepspeed --include=localhost:${GPU_DEVICES} \
+    main/train_llm.py \
+    --config_name "${MODEL_DIR}/config.json" \
+    --tokenizer_name "${MODEL_DIR}" \
+    --model_name_or_path "${MODEL_DIR}" \
+    --train_files "${DATA_FILE}" \
+    --per_device_train_batch_size 64 \
+    --per_device_eval_batch_size 32 \
+    --do_train \
+    --output_dir "${OUTPUT_DIR}" \
+    --evaluation_strategy steps \
+    --use_fast_tokenizer false \
+    --max_eval_samples 0 \
+    --learning_rate 1e-6 \
+    --gradient_accumulation_steps 4 \
+    --num_train_epochs 10 \
+    --warmup_ratio 0.1 \
+    --logging_dir "${OUTPUT_DIR}/logs" \
+    --logging_strategy steps \
+    --logging_steps 50 \
+    --save_strategy steps \
+    --preprocessing_num_workers 10 \
+    --save_steps 20000000 \
+    --eval_steps 500000000 \
+    --save_total_limit 2000 \
+    --seed 42 \
+    --disable_tqdm false \
+    --ddp_find_unused_parameters false \
+    --block_size 1024 \
+    --overwrite_output_dir \
+    --report_to tensorboard \
+    --run_name llm_pretrain \
+    --bf16 \
+    --bf16_full_eval \
+    --gradient_checkpointing \
+    --deepspeed configs/models/zero3.json \
+    --ignore_data_skip true \
+    --ddp_timeout 18000000 \
+    | tee -a "${LOG_FILE}"
+```
+</details>
+
 <details>
   <summary><b> Finetune on Geometry Data</b></summary>
     
