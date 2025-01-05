@@ -215,9 +215,9 @@ deepspeed --include=localhost:${GPU_DEVICES} --master_port=$MASTER_PORT main/tra
     --bf16 True \
     --output_dir "${OUTPUT_DIR}" \
     --num_train_epochs 100 \
-    --per_device_train_batch_size 64 \
+    --per_device_train_batch_size 16 \
     --per_device_eval_batch_size 4 \
-    --gradient_accumulation_steps 1 \
+    --gradient_accumulation_steps 4 \
     --evaluation_strategy "no" \
     --save_strategy "steps" \
     --save_steps 1000 \
