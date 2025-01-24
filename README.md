@@ -35,6 +35,7 @@
 
 ## 🚩 News
 
+- [2025/1/23] GeoX was accepted to ICLR 2025
 - [2024/12/30] Full version of the code and training scripts will be released soon.
 - [2024/10/17] Upload paper and init project. Release the data for GeoX. See [here](https://huggingface.co/U4R/GeoX).
 
