@@ -1,7 +1,7 @@
 
 
 <div align= "center">
-    <h1> Official repo for GeoX</h1>
+    <h1> ICLR-2025 Official repo for GeoX</h1>
 
 </div>
 
