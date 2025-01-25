@@ -252,9 +252,3 @@
 - decoder_norm.bias
 - decoder_pred.weight
 - decoder_pred.bias
-- mmtransformer.bert.encoder.samplers.3.linear_layer.weight
-- mmtransformer.bert.encoder.samplers.3.linear_layer.bias
-- mmtransformer.bert.encoder.samplers.6.linear_layer.weight
-- mmtransformer.bert.encoder.samplers.6.linear_layer.bias
-- mmtransformer.bert.encoder.samplers.9.linear_layer.weight
-- mmtransformer.bert.encoder.samplers.9.linear_layer.bias

@@ -1,0 +1,18 @@
+model:
+  arch: pretrain
+  load_finetuned: False
+
+  finetuned: ""
+
+  # vit encoder
+  vit_model: base
+  image_size: 224
+  drop_path_rate: 0
+  use_grad_checkpoint: False
+  vit_precision: "fp16"
+  freeze_vit: True
+
+  # GS-Former
+  num_query_token: 8
+  max_txt_len: 64
+

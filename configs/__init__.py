@@ -1,1 +1,1 @@
-from .models import constants
+# from condigs.models import constants

@@ -5,47 +5,35 @@
  For full license text, see the LICENSE file in the repo root or https://opensource.org/licenses/BSD-3-Clause
 """
 import contextlib
-import datetime
-import logging
-import math
 import os
 import time
-import warnings
-from dataclasses import dataclass
-from typing import Any, Dict, Optional, Tuple
-
+import datetime
+import math
 import numpy as np
+
 import torch
-import torch.distributed as dist
 import torch.nn as nn
+import torch.distributed as dist
 import torch.nn.functional as F
-import torch.utils.checkpoint
 from torch import Tensor, device, dtype
-from transformers import BertConfig, BertTokenizer
+
+
+from transformers import BertConfig
 from transformers.activations import ACT2FN
-from transformers.file_utils import ModelOutput
-from transformers.modeling_outputs import (
-    BaseModelOutputWithPastAndCrossAttentions,
-    BaseModelOutputWithPoolingAndCrossAttentions,
-    CausalLMOutputWithCrossAttentions,
-    MaskedLMOutput,
-    MultipleChoiceModelOutput,
-    NextSentencePredictorOutput,
-    QuestionAnsweringModelOutput,
-    SequenceClassifierOutput,
-    TokenClassifierOutput,
-)
 from transformers.modeling_utils import (
     PreTrainedModel,
     apply_chunking_to_forward,
     find_pruneable_heads_and_indices,
     prune_linear_layer,
 )
-from transformers.utils import logging
+from transformers import logging
 
-import utils.dist_utils as dist_utils
-from utils.dist_utils import download_cached_file, is_dist_avail_and_initialized
-from models.vit_encoder import create_vencoder
+import lavis.common.dist_utils as dist_utils
+from lavis.common.dist_utils import download_cached_file
+from lavis.common.utils import is_url
+from lavis.common.logger import MetricLogger
+from lavis.modules.base_model import BaseModel
+
 
 
 
@@ -282,10 +270,6 @@ class BertSelfAttention(nn.Module):
 
 
         attention_probs = nn.Softmax(dim=-1)(attention_scores)
-
-
-
-        
 
         if is_cross_attention and self.save_attention:
             self.save_attention_map(attention_probs)
@@ -613,109 +597,8 @@ class BertPreTrainedModel(PreTrainedModel):
             module.bias.data.zero_()
 
 
-class BaseModel(nn.Module):
-    """Base class for models."""
-
-    def __init__(self):
-        super().__init__()
-
-    @property
-    def device(self):
-        return list(self.parameters())[0].device
-
-    def load_checkpoint(self, url_or_filename):
-        """
-        Load from a finetuned checkpoint.
-
-        This should expect no mismatch in the model keys and the checkpoint keys.
-        """
-
-        if os.path.isfile(url_or_filename):
-            checkpoint = torch.load(url_or_filename, map_location="cpu")
-        else:
-            raise RuntimeError("checkpoint url or path is invalid")
-
-        if "model" in checkpoint.keys():
-            state_dict = checkpoint["model"]
-        else:
-            state_dict = checkpoint
-
-        msg = self.load_state_dict(state_dict, strict=False)
-
-        logging.info("missing keys {}".format(msg.missing_keys))
-        logging.info("load checkpoint from %s" % url_or_filename)
-
-        return msg
-
-
-    def load_checkpoint_from_config(self, cfg, **kwargs):
-        """
-        Load checkpoint as specified in the config file.
-
-        If load_finetuned is True, load the finetuned model; otherwise, load the pretrained model.
-        When loading the pretrained model, each task-specific architecture may define their
-        own load_from_pretrained() method.
-        """
-        load_finetuned = cfg.get("load_finetuned", True)
-        if load_finetuned:
-            finetune_path = cfg.get("finetuned", None)
-            assert (
-                finetune_path is not None
-            ), "Found load_finetuned is True, but finetune_path is None."
-            self.load_checkpoint(url_or_filename=finetune_path)
-        else:
-            load_pretrained = cfg.get("load_pretrained", True)
-            if load_pretrained:
-                # load pre-trained weights
-                pretrain_path = cfg.get("pretrained", None)
-                assert "Found load_finetuned is False, but pretrain_path is None."
-                self.load_from_pretrained(url_or_filename=pretrain_path, **kwargs)
-
-    def before_training(self, **kwargs):
-        pass
-
-    def get_optimizer_params(self, weight_decay, lr_scale=1):
-        p_wd, p_non_wd = [], []
-        for n, p in self.named_parameters():
-            if not p.requires_grad:
-                continue  # frozen weights
-            if p.ndim < 2 or "bias" in n or "ln" in n or "bn" in n:
-                p_non_wd.append(p)
-            else:
-                p_wd.append(p)        
-        optim_params = [
-            {"params": p_wd, "weight_decay": weight_decay, "lr_scale": lr_scale},
-            {"params": p_non_wd, "weight_decay": 0, "lr_scale": lr_scale},
-        ]                
-        return optim_params
-    
-    def before_evaluation(self, **kwargs):
-        pass
-
-    def show_n_params(self, return_str=True):
-        tot = 0
-        for p in self.parameters():
-            w = 1
-            for x in p.shape:
-                w *= x
-            tot += w
-        if return_str:
-            if tot >= 1e6:
-                return "{:.1f}M".format(tot / 1e6)
-            else:
-                return "{:.1f}K".format(tot / 1e3)
-        else:
-            return tot
-
-
-
 class Blip2Base(BaseModel):
-    @classmethod
-    def init_tokenizer(cls, truncation_side="right"):
-        tokenizer = BertTokenizer.from_pretrained("", truncation_side=truncation_side)
-        tokenizer.add_special_tokens({"bos_token": "[DEC]"})
-        return tokenizer
-
+    
     def maybe_autocast(self, dtype=torch.float16):
         # if on cpu, don't use autocast
         # if on gpu, use autocast with dtype if provided, otherwise use torch.float16
@@ -726,17 +609,14 @@ class Blip2Base(BaseModel):
         else:
             return contextlib.nullcontext()
 
-    def init_vision_encoder(
-        self, model_name, img_size, drop_path_rate, use_grad_checkpoint, precision
-    ):
-
-        visual_encoder = create_vencoder(img_size, use_grad_checkpoint, precision)
-        ln_vision = None
-        self.vit_name = model_name
-        return visual_encoder, ln_vision
 
     def load_from_pretrained(self, url_or_filename):
-        if os.path.isfile(url_or_filename):
+        if is_url(url_or_filename):
+            cached_file = download_cached_file(
+                url_or_filename, check_hash=False, progress=True
+            )
+            checkpoint = torch.load(cached_file, map_location="cpu")
+        elif os.path.isfile(url_or_filename):
             checkpoint = torch.load(url_or_filename, map_location="cpu")
         else:
             raise RuntimeError("checkpoint url or path is invalid")
@@ -752,6 +632,9 @@ class Blip2Base(BaseModel):
 
     def get_optimizer_params(self, weight_decay, lr_scale=1):
 
+        # vit_num_layers = self.visual_encoder.get_num_layer()
+        # vit_num_layers = 12
+        # lr_scales = list(lr_scale ** (vit_num_layers + 1 - i) for i in range(vit_num_layers + 2))
 
         parameter_group_names = {}
         parameter_group_vars = {}
@@ -765,6 +648,11 @@ class Blip2Base(BaseModel):
             else:
                 group_name = "decay"
                 this_weight_decay = weight_decay
+            # if 'visual_encoder' in name:
+            #     layer_id = self.visual_encoder.get_num_layer(name.replace('visual_encoder.',''))
+            #     group_name = "vit_layer_%d_%s" % (layer_id, group_name)
+            # else:
+            #     layer_id = None
             layer_id = None
 
             if group_name not in parameter_group_names:
@@ -832,12 +720,4 @@ def disabled_train(self, mode=True):
     does not change anymore."""
     return self
 
-
-class LayerNorm(nn.LayerNorm):
-    """Subclass torch's LayerNorm to handle fp16."""
-
-    def forward(self, x: torch.Tensor):
-        orig_type = x.dtype
-        ret = super().forward(x.type(torch.float32))
-        return ret.type(orig_type)
 

@@ -21,7 +21,7 @@ from transformers.generation.utils import GenerateOutput
 
 from models.builder import build_vision_projector
 
-from configs.models.constants import IGNORE_INDEX, IMAGE_TOKEN_INDEX, DEFAULT_IMAGE_PATCH_TOKEN, DEFAULT_IM_START_TOKEN, DEFAULT_IM_END_TOKEN, DEFAULT_SEP_TOKEN
+from configs.constants import IGNORE_INDEX, IMAGE_TOKEN_INDEX, DEFAULT_IMAGE_PATCH_TOKEN, DEFAULT_IM_START_TOKEN, DEFAULT_IM_END_TOKEN, DEFAULT_SEP_TOKEN
 
 from utils.mm_utils import get_anyres_image_grid_shape, unpad_image
 from utils.param import detach_and_clone_param, get_parameters_by_keys

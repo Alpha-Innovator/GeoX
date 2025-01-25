@@ -9,7 +9,7 @@ from torch.cuda.amp import autocast as autocast
 from torch.nn import functional as F
 
 
-from  models.blip2 import (
+from lavis.modules.blip2 import (
     Blip2Base,
 )
 
@@ -21,20 +21,17 @@ from utils.pos_embed import interpolate_pos_embed
 
 from torchvision import transforms
 from PIL import Image
-from data.procressor import ImageProcessor
+from data.processor import ImageProcessor
 from models.vit_encoder import VTransformer
 import yaml
-CONFIG = 'configs/models/param.yaml'
+CONFIG = 'configs/param.yaml'
 
 
 def frozen_params(model):
     with open(CONFIG, 'r') as f:
         frozen_param_names = yaml.safe_load(f)
 
-
-    # Iterate over all parameters in the model
     for name, param in model.named_parameters():
-        # If the parameter name is in the config file, freeze it
         if name in frozen_param_names:
             param.requires_grad = False
         else:
@@ -48,7 +45,7 @@ class GeoVisionTower(Blip2Base):
         self.is_loaded = False
 
         self.vision_tower_name = vision_tower
-        self.gsformer_path = args.gsformer_path
+            
         self.select_layer = args.mm_vision_select_layer
         self.select_feature = getattr(args, 'mm_vision_select_feature', 'patch')
 
@@ -57,7 +54,7 @@ class GeoVisionTower(Blip2Base):
             self.processor_path = args.processor_path
             
  
-        self.gsformer = GSFormer(num_query_token, feature_dim, cross_attention_freq)
+        self.gsformer = GSFormer(num_query_token, feature_dim, cross_attention_freq, finetune=True)
 
         self.gsformer.mmtransformer.bert.embeddings.word_embeddings = None
         self.gsformer.mmtransformer.bert.embeddings.position_embeddings = None
@@ -65,40 +62,29 @@ class GeoVisionTower(Blip2Base):
             layer.output = None
             layer.intermediate = None
         self.gsformer.mmtransformer.cls = None
-        
-        self.load_model()
+        if hasattr(args, 'gsformer_path') and args.gsformer_path:
+            gsformer_path = args.gsformer_path
+        else:
+            gsformer_path = None
+        self.load_model(gsformer_path)
 
     
-    def load_model(self, device_map=None):
+    def load_model(self, gsformer_path=None, device_map=None):
 
         if self.is_loaded:
             print('{} is already loaded, `load_model` called again, skipping.'.format(self.vision_tower_name))
             return
 
-        # Load GSFormer checkpoint if provided
-        if self.gsformer_path is not None:
-            new_state_dict = {}
-            gsformer_checkpoint = torch.load(self.gsformer_path, map_location='cpu')
-
-            for key, value in gsformer_checkpoint['model'].items():
-                new_state_dict[key] = value 
-
-            missing_keys, unexpected_keys = self.gsformer.load_state_dict(new_state_dict, strict=False)
-            print(f"Missing keys when loading GSFormer: {missing_keys}")
-
-            if CONFIG is not None:
-                frozen_params(self.gsformer)
-
-        # Load vision tower
+        # Load Vision Encoder
         self.image_processor = ImageProcessor()
-        self.vision_tower = VTransformer(
+        self.vision_encoder = VTransformer(
             patch_size=16, embed_dim=768, depth=12, num_heads=12, mlp_ratio=4, qkv_bias=True,
             norm_layer=partial(nn.LayerNorm, eps=1e-6))
 
         checkpoint = torch.load(self.vision_tower_name, map_location='cpu')
         checkpoint_model = checkpoint['model']
 
-        state_dict = self.vision_tower.state_dict()
+        state_dict = self.vision_encoder.state_dict()
 
         # Remove mismatched keys
         for k in ['head.weight', 'head.bias']:
@@ -107,16 +93,29 @@ class GeoVisionTower(Blip2Base):
                 del checkpoint_model[k]
 
         # Interpolate position embeddings and load state dict
-        interpolate_pos_embed(self.vision_tower, checkpoint_model)
-        msg = self.vision_tower.load_state_dict(checkpoint_model, strict=False)
+        interpolate_pos_embed(self.vision_encoder, checkpoint_model)
+        msg = self.vision_encoder.load_state_dict(checkpoint_model, strict=False)
         print("The keys are not loaded by Vision Encoder:", msg.missing_keys)
 
-
-
         if CONFIG is not None:
-            frozen_params(self.vision_tower)
-            self.vision_tower.eval()
+            frozen_params(self.vision_encoder)
+            self.vision_encoder.eval()
 
+        # Load GSFormer checkpoint if provided
+        if gsformer_path:
+            new_state_dict = {}
+            gsformer_checkpoint = torch.load(gsformer_path, map_location='cpu')
+            
+            for key, value in gsformer_checkpoint['model'].items():
+                key = key.split("gsformer.")[-1]
+                new_state_dict[key] = value
+
+            missing_keys, unexpected_keys = self.gsformer.load_state_dict(new_state_dict, strict=False)
+            print(f"Missing keys when loading GSFormer: {missing_keys}")
+
+        
+            if CONFIG is not None:
+                frozen_params(self.gsformer)
         self.is_loaded = True
 
 
@@ -125,10 +124,10 @@ class GeoVisionTower(Blip2Base):
             if type(images) is list:
                 image_embeds = []
                 for image in images:
-                    image_feature = self.vision_tower(image.to(device=self.device, dtype=self.dtype).unsqueeze(0), output_hidden_states=True)
+                    image_feature = self.vision_encoder(image.to(device=self.device, dtype=self.dtype).unsqueeze(0), output_hidden_states=True)
                     image_embeds.append(image_feature)
             else:
-                image_embeds = self.vision_tower(images).contiguous()
+                image_embeds = self.vision_encoder(images).contiguous()
 
         query_output = self.gsformer(image_embeds)
         return query_output
@@ -139,16 +138,16 @@ class GeoVisionTower(Blip2Base):
 
     @property
     def dtype(self):
-        return self.vision_tower.dtype
+        return self.vision_encoder.dtype
 
     @property
     def device(self):
-        return self.vision_tower.device
+        return self.vision_encoder.device
 
     @property
     def config(self):
         if self.is_loaded:
-            return self.vision_tower.config
+            return self.vision_encoder.config
         else:
             return self.cfg_only
 

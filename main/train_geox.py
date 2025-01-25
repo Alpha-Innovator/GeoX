@@ -18,7 +18,7 @@ import tokenizers
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
-from configs.models.constants import IGNORE_INDEX, IMAGE_TOKEN_INDEX, DEFAULT_IMAGE_TOKEN, DEFAULT_IM_START_TOKEN, DEFAULT_IM_END_TOKEN
+from configs.constants import IGNORE_INDEX, IMAGE_TOKEN_INDEX, DEFAULT_IMAGE_TOKEN, DEFAULT_IM_START_TOKEN, DEFAULT_IM_END_TOKEN
 from configs.geox_opts import ModelArguments, DataArguments, TrainingArguments
 import configs.conversation as conversation_lib
 from models.geox import GeoXLlamaForCausalLM, GeoXTrainer

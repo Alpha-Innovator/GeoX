@@ -11,7 +11,6 @@ from torch import nn
 from torch.nn import CrossEntropyLoss
 import torch.nn.functional as F
 
-from transformers.activations import ACT2FN
 from transformers.file_utils import (
     ModelOutput,
 )
@@ -19,25 +18,13 @@ from transformers.modeling_outputs import (
     BaseModelOutputWithPastAndCrossAttentions,
     BaseModelOutputWithPoolingAndCrossAttentions,
     CausalLMOutputWithCrossAttentions,
-    MaskedLMOutput,
-    MultipleChoiceModelOutput,
-    NextSentencePredictorOutput,
-    QuestionAnsweringModelOutput,
-    SequenceClassifierOutput,
-    TokenClassifierOutput,
 )
-from transformers.modeling_utils import (
-    PreTrainedModel,
-    apply_chunking_to_forward,
-    find_pruneable_heads_and_indices,
-    prune_linear_layer,
-)
-from transformers.utils import logging
+from transformers import logging, BertTokenizer
 from transformers.models.bert.configuration_bert import BertConfig as Config
-from models.blip2 import Embeddings, BertLayer, BertPreTrainedModel, BertOnlyMLMHead
+from lavis.modules.blip2 import Embeddings, BertLayer, BertPreTrainedModel, BertOnlyMLMHead
 from models.builder import build_sampler, build_vote_generator
 logger = logging.get_logger(__name__)
-
+BERT_PATH = "google-bert/bert-base-uncased" # Path to BERT model, modify as needed
 
 @dataclass
 class BaseModelOutputWithPastAndCrossAttentionsAndPredAttention(BaseModelOutputWithPastAndCrossAttentions):
@@ -46,8 +33,7 @@ class BaseModelOutputWithPastAndCrossAttentionsAndPredAttention(BaseModelOutputW
 @dataclass
 class BaseModelOutputWithPoolingAndCrossAttentionsAndPredAttention(BaseModelOutputWithPoolingAndCrossAttentions):
     pred_attention_mask: Optional[Tuple[torch.FloatTensor]] = None
-
-    
+ 
 
 class EncoderWithSampler(nn.Module):
     """
@@ -60,7 +46,9 @@ class EncoderWithSampler(nn.Module):
         super().__init__()
         self.config = config
         self.layer = nn.ModuleList([BertLayer(config, i) for i in range(config.num_hidden_layers)])
-        self.samplers = build_sampler(embed_dim=config.hidden_size)
+        self.samplers = nn.ModuleDict({
+            str(i): build_sampler(embed_dim=config.hidden_size) for i in config.sampler_layer
+        })
 
     def forward(
         self,
@@ -109,8 +97,8 @@ class EncoderWithSampler(nn.Module):
             past_key_value = past_key_values[i] if past_key_values is not None else None
 
             # Apply patch selection at specific layers
-            if self.samplers[i] is not None and encoder_attention_mask is not None:
-                selected_probs = self.samplers[i](encoder_hidden_states)
+            if str(i) in self.samplers and encoder_attention_mask is not None:
+                selected_probs = self.samplers[str(i)](encoder_hidden_states)
                 encoder_attention_mask = selected_probs * encoder_attention_mask
                 pred_attention_mask += (encoder_attention_mask,)
 
@@ -587,17 +575,28 @@ class HeadModel(BertPreTrainedModel):
             )
         return reordered_past
 
+def init_tokenizer():        
+    tokenizer = BertTokenizer.from_pretrained(BERT_PATH)
+    tokenizer.add_special_tokens({"bos_token": "[DEC]"})
+    return tokenizer
 
 class GSFormer(nn.Module):
-    def __init__(self, num_query_token, feature_dim, cross_attention_freq=2):
+    def __init__(self, num_query_token, feature_dim, cross_attention_freq=2, sampler_layer=[3, 6, 9], finetune=False):
         super().__init__()
-        encoder_config = Config.from_pretrained("")
+        encoder_config = Config.from_pretrained(BERT_PATH)
         encoder_config.encoder_width = feature_dim
         encoder_config.add_cross_attention = True
         encoder_config.cross_attention_freq = cross_attention_freq
         encoder_config.query_length = num_query_token
+        encoder_config.sampler_layer = sampler_layer
 
-        self.mmtransformer = HeadModel(config=encoder_config)
+        self.finetune = finetune
+
+        if finetune:
+            self.mmtransformer = HeadModel(encoder_config)  
+        else:
+            self.mmtransformer = HeadModel.from_pretrained(BERT_PATH, config=encoder_config)
+
         self.learnable_query = nn.Parameter(
             torch.zeros(1, num_query_token, encoder_config.hidden_size)
         )
@@ -607,11 +606,16 @@ class GSFormer(nn.Module):
 
 
     def forward(self, image_embeds):
-        
         image_atts = torch.ones(image_embeds.size()[:-1], dtype=torch.long).to(image_embeds.device)
         query_tokens = self.learnable_query.expand(image_embeds.shape[0], -1, -1) + self.query_gen(image_embeds)
         query_tokens = query_tokens.contiguous()
-        
+
+        if self.finetune:
+            return self._forward_finetune(query_tokens, image_embeds, image_atts)
+        else:
+            return self._forward_pretrain(query_tokens, image_embeds, image_atts)
+
+    def _forward_finetune(self, query_tokens, image_embeds, image_atts):   
         query_output = self.mmtransformer.bert(
             query_embeds=query_tokens,
             encoder_hidden_states=image_embeds,
@@ -620,4 +624,15 @@ class GSFormer(nn.Module):
         )
         
         return query_output.last_hidden_state[:,:query_tokens.size(1),:]
+    
+    def _forward_pretrain(self, query_tokens, image_embeds, image_atts):
+        query_output = self.mmtransformer.bert(
+            query_embeds=query_tokens,
+            encoder_hidden_states=image_embeds,
+            encoder_attention_mask=image_atts,
+            use_cache=True,
+            return_dict=True,
+        )
+        return image_atts, query_tokens, query_output
+
         

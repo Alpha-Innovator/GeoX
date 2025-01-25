@@ -1,0 +1,1 @@
+python -m torch.distributed.run --nproc_per_node=8 main/train_gsformer.py --cfg-path configs/gsformer.yaml

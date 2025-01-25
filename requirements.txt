@@ -1,10 +1,10 @@
 torch==2.0.1
 torchvision==0.15.2
-transformers==
-tokenizers==
+transformers==4.36.2
+tokenizers==0.15.2
 sentencepiece==0.1.99
 shortuuid
-accelerate==
+accelerate==0.28.0
 peft==0.10.0
 bitsandbytes
 pydantic
@@ -20,11 +20,16 @@ fastapi
 einops==0.6.1
 einops-exts==0.0.4
 timm==0.6.13
-deepspeed==
+deepspeed==0.14.5
 ninja
 wandb==0.17.0
 build
 twine
-# omegaconf
+antlr4-python3-runtime==4.10
+sympy==1.11.1
+func_timeout==4.3.5
+omegaconf==2.4.0.dev3
+iopath
+webdataset
 # fairscale
 

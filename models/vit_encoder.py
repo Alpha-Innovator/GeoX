@@ -5,11 +5,10 @@ import math
 import torch
 import torch.nn.functional as F
 from torch import nn
-from utils.pos_embed import interpolate_pos_embed
+from utils.pos_embed import interpolate_pos_embed, get_2d_sincos_pos_embed
 from functools import partial
 import timm.models.vision_transformer
 from timm.models.vision_transformer import PatchEmbed, Block
-from utils.pos_embed import get_2d_sincos_pos_embed
 
 
 class MaskedAutoencoderViT(nn.Module):
@@ -247,13 +246,13 @@ class VTransformer(timm.models.vision_transformer.VisionTransformer):
         return outcome
 
 
-def create_vencoder(img_size=224,use_checkpoint=False,precision="fp16"):
+def create_vencoder(path, img_size=224,precision="fp16"):
     
     model = VTransformer(
         patch_size=16, embed_dim=768, depth=12, num_heads=12, mlp_ratio=4, qkv_bias=True,
         norm_layer=partial(nn.LayerNorm, eps=1e-6))
     
-    checkpoint = torch.load('', map_location='cpu')
+    checkpoint = torch.load(path, map_location='cpu')
     checkpoint_model = checkpoint['model']
 
     state_dict = model.state_dict()
@@ -267,7 +266,5 @@ def create_vencoder(img_size=224,use_checkpoint=False,precision="fp16"):
     msg = model.load_state_dict(checkpoint_model, strict=False)
     
     print("msg.missing_keys",msg.missing_keys)
-
-
 
     return model
